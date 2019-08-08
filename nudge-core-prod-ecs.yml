@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  nudgeCoreImage:
+    Type: String
+    Description: The Docker image for the nudgeCore
+  ecsCluster:
+    Type: String
+    Description: The ECS cluster this needs to be deployed to
+  envAppConfig:
+    Type: String
+    Description: app config ini path e.g. "/app/core/settings.dev.ini"
+  envMigrateConfig:
+    Type: String
+    Description: migrated config ini path e.g. "/app/core/settings.devmigrate.ini"
+  targetGroupArn:
+    Type: String
+    Description: The ARN of the Target Group
+
+
+
+#  loadBalancerSecurityGroups:
+#    Type: String
+#    Description: The security groups()) for the load balancer
+#  loadBalancerSubnets:
+#    Type: "List<AWS::EC2::Subnet::Id>"
+#    Description: The subnet IDs for the load balancer
+
+
+Resources:
+  nudgeCoreTask:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+        -
+          Name: "nudge-core-prod"
+          Image: !Ref "nudgeCoreImage"
+          Cpu: "100"
+          Memory: "500"
+          Essential: "true"
+          PortMappings: 
+            - HostPort: 80
+              Protocol: "tcp"
+              ContainerPort: 80
+            # TODO: 443!
+          Environment: 
+            - Name: "APP_CONFIG"
+              Value: !Ref "envAppConfig"
+            - Name: "MIGRATE_CONFIG"
+              Value: !Ref "envMigrateConfig"
+
+  nudgeCoreService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref "ecsCluster"
+      DesiredCount: "1"
+      TaskDefinition: !Ref "nudgeCoreTask"
+      LoadBalancers:
+        - TargetGroupArn: !Ref "targetGroupArn"
+          ContainerPort: 80
+          ContainerName: "nudge-core-prod"
+
+  nudgeCoreAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [application-autoscaling.amazonaws.com]
+          Action: ["sts:AssumeRole"]
+      Path: /
+      Policies:
+      - PolicyName: service-autoscaling
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ["application-autoscaling:*", "cloudwatch:DescribeAlarms", "cloudwatch:PutMetricAlarm",
+              "ecs:DescribeServices", "ecs:UpdateService"]
+            Resource: "*"
+  nudgeCoreTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 10
+      MinCapacity: 1
+      ResourceId: !Join ["/", [service, !Ref "ecsCluster", !GetAtt [nudgeCoreService, Name]]]
+      RoleARN: !GetAtt [ nudgeCoreAutoScalingRole, Arn ]
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+  ScaleUp:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: NudgeCorePolicyDown
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref "nudgeCoreTarget"
+      StepScalingPolicyConfiguration:
+        Cooldown: 60
+        MetricAggregationType: "Average"
+        AdjustmentType: "ChangeInCapacity"
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            MetricIntervalUpperBound: 100
+            ScalingAdjustment: 2
+          - MetricIntervalLowerBound: 100
+            ScalingAdjustment: 4
+  ScaleDown:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: NudgeCorePolicyUp
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref "nudgeCoreTarget"
+      StepScalingPolicyConfiguration:
+        Cooldown: 60
+        MetricAggregationType: "Average"
+        AdjustmentType: "ChangeInCapacity"
+        StepAdjustments:
+          - MetricIntervalUpperBound: -1
+            MetricIntervalLowerBound: -100
+            ScalingAdjustment: -1
+          - MetricIntervalUpperBound: -100
+            ScalingAdjustment: -2
+
+  # manual for now...
+
+  # NudgeCoreLoadBalancer:
+  #   Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+  #   Properties: 
+  #     SecurityGroups: 
+  #       - !Ref "loadBalancerSecurityGroups"
+  #     Subnets: !Ref "loadBalancerSubnets"
+  #     Name: "nudge-core-prod"
+
+  # NudgeCoreListener:
+  #   Type: AWS::ElasticLoadBalancingV2::Listener
+  #   Properties: 
+  #     Certificates: 
+  #       - Certificate
+  #     DefaultActions: 
+  #       - Action
+  #     LoadBalancerArn: String
+  #     Port: Integer
+  #     Protocol: String
+  #     SslPolicy: String

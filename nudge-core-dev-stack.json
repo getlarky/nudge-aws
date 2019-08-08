@@ -1,0 +1,128 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "Partial nudge core DEV stack.",
+  "Parameters" : {
+    "WebAMI" : {
+      "Type" : "String"
+    },
+    "KeyPair" : {
+      "Type" : "String"
+    },
+    "DBUser" : {
+      "Type" : "String"
+    },
+    "DBPassword" : {
+      "Type" : "String",
+      "NoEcho": "TRUE"
+    },
+    "environment" : {
+      "Type" : "String"
+    },
+    "role" : {
+      "Type" : "String"
+    },
+    "owner" : {
+      "Type" : "String"
+    }
+  },
+  "Resources" : {
+    "NudgeDB" : {
+      "Type" : "AWS::RDS::DBInstance",
+      "Properties" : {
+        "VPCSecurityGroups" : [ { "Fn::GetAtt": [ "DBEC2SecurityGroupDev", "GroupId" ] } ],
+        "DBName" : "nudgecoredbdev",
+        "AllocatedStorage" : 20,
+        "DBInstanceClass" : "db.t2.micro",
+        "Engine" : "MySQL",
+        "EngineVersion" : "5.5",
+        "MasterUsername" : { "Ref" : "DBUser" },
+        "MasterUserPassword" : { "Ref" : "DBPassword" }
+      },
+      "DeletionPolicy" : "Snapshot"
+    },
+    "DBEC2SecurityGroupDev" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Allow inbound MySQL access from web instances, home and office",
+        "SecurityGroupIngress" : [
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "3306",
+            "ToPort" : "3306",
+            "CidrIp" : "68.37.53.22/32",
+            "Description" : "ssh ishotjr home"
+          },
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "3306",
+            "ToPort" : "3306",
+            "CidrIp" : "173.13.23.121/32",
+            "Description" : "ssh Larky HQ"
+          },
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "3306",
+            "ToPort" : "3306",
+            "CidrIp" : "68.40.79.71/32",
+            "Description" : "ssh bromeostasis home"
+          },
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "3306",
+            "ToPort" : "3306",
+            "CidrIp" : "24.12.195.76/32",
+            "Description" : "ssh mcgarveymobile home"
+          },
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "3306",
+            "ToPort" : "3306",
+            "SourceSecurityGroupName" : { "Ref" : "WebSecurityGroupDev" }
+          }
+        ]
+      }
+    },
+    "WebSecurityGroupDev" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Allow HTTP from anywhere, restrict SSH to home and office",
+        "SecurityGroupIngress" : [
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "22",
+            "ToPort" : "22",
+            "CidrIp" : "68.37.53.22/32",
+            "Description" : "ssh ishotjr home"
+          },
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "22",
+            "ToPort" : "22",
+            "CidrIp" : "173.13.23.121/32",
+            "Description" : "ssh Larky HQ"
+          },
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "22",
+            "ToPort" : "22",
+            "CidrIp" : "68.40.79.71/32",
+            "Description" : "ssh bromeostasis home"
+          },
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "22",
+            "ToPort" : "22",
+            "CidrIp" : "24.12.195.76/32",
+            "Description" : "ssh mcgarveymobile home"
+          },
+          {
+            "IpProtocol" : "tcp",
+            "FromPort" : "80",
+            "ToPort" : "80",
+            "CidrIp" : "0.0.0.0/0"
+          }
+        ]
+      }
+    }
+  }
+}
