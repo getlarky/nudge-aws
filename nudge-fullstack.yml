@@ -1,0 +1,618 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  ServiceName:
+    Type: String
+    Description: Name of this service e.g. nudge-core-prod
+  nudgeImage:
+    Type: String
+    Description: The Docker image for this service
+  DBInstanceClass:
+    Type: String
+    Default: db.t2.medium
+    Description: The instance type to use for the RDS DB server(s)
+  DBUser:
+    Type: String
+  DBPassword:
+    Type: String
+    NoEcho: 'TRUE'
+  ContainerPort:
+    Type: Number
+    Default: 80
+    Description: What port number the application inside the docker container is binding to
+  ContainerCpu:
+    Type: Number
+    Default: 256
+    Description: How much CPU to give the container. 1024 is 1 CPU
+  ContainerMemory:
+    Type: Number
+    Default: 512
+    Description: How much memory in megabytes to give the container
+  envAppConfig:
+    Type: String
+    Description: app config ini path e.g. "/app/core/settings.dev.ini"
+  envMigrateConfig:
+    Type: String
+    Description: migrated config ini path e.g. "/app/core/settings.devmigrate.ini"
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: 10.0.0.0/16
+    PublicOne:
+      CIDR: 10.0.0.0/24
+    PublicTwo:
+      CIDR: 10.0.1.0/24
+    PublicThree:
+      CIDR: 10.0.2.0/24
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !FindInMap 
+        - SubnetConfig
+        - VPC
+        - CIDR
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: c239754f-a13f-4391-a6f6-cf7f68cc87b5
+  PublicSubnetOne:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone:
+        'Fn::Select':
+          - 0
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap 
+        - SubnetConfig
+        - PublicOne
+        - CIDR
+      MapPublicIpOnLaunch: true
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 1ef8cc2f-29c8-4bdc-a4f5-e191681eec91
+  PublicSubnetTwo:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone:
+        'Fn::Select':
+          - 1
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap 
+        - SubnetConfig
+        - PublicTwo
+        - CIDR
+      MapPublicIpOnLaunch: true
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 71e65129-8c4d-44ae-a537-e8f580e03e15
+  PublicSubnetThree:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone:
+        'Fn::Select':
+          - 2
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap 
+        - SubnetConfig
+        - PublicThree
+        - CIDR
+      MapPublicIpOnLaunch: true
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: ef3228c7-513a-480a-8990-d9e50901c34e
+  NudgeDB:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      VPCSecurityGroups:
+        - !GetAtt 
+          - DBEC2SecurityGroupProd
+          - GroupId
+      DBName: !Ref ServiceName
+      AllocatedStorage: 20
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: MySQL
+      EngineVersion: '5.5'
+      MasterUsername: !Ref DBUser
+      MasterUserPassword: !Ref DBPassword
+    DeletionPolicy: Snapshot
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: babe6199-badf-4526-a7b5-ec156157906a
+  DBEC2SecurityGroupProd:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Allow inbound MySQL access from web instances, home and office'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          CidrIp: 68.37.53.22/32
+          Description: ssh ishotjr home
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          CidrIp: 173.13.23.121/32
+          Description: ssh Larky HQ
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          CidrIp: 97.71.29.74/32
+          Description: ssh adrq home
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          CidrIp: 24.12.195.76/32
+          Description: ssh mcgarveymobile home
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          SourceSecurityGroupName: !Ref WebSecurityGroupProd
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 7784d14f-6e4e-4a07-8200-474bb161b8e2
+  WebSecurityGroupProd:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Allow HTTP from anywhere, restrict SSH to home and office'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 68.37.53.22/32
+          Description: ssh ishotjr home
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 173.13.23.121/32
+          Description: ssh Larky HQ
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 97.71.29.74/32
+          Description: ssh adrq home
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 24.12.195.76/32
+          Description: ssh mcgarveymobile home
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 13546089-a73d-4ea9-8e96-059109fad9d8
+  nudgeLoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Subnets:
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+        - !Ref PublicSubnetThree
+      SecurityGroups:
+        - !Ref WebSecurityGroupProd
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 0163c7ea-2703-4a59-8627-40ff10894391
+  nudgeListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      LoadBalancerArn: !Ref nudgeLoadBalancer
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref nudgeTargetGroup
+      Port: '80'
+      Protocol: HTTP
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 86d00b62-fcb4-4e3f-b9e5-1a192a3ef91b
+  nudgeTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 1e1965f8-93d9-4368-886e-8beccb41e72a
+  nudgeCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: !Ref ServiceName
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 59f92925-e545-4700-b711-4e0b07de41f9
+  nudgeTask:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Family: !Ref ServiceName
+      Cpu: !Ref ContainerCpu
+      Memory: !Ref ContainerMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ContainerDefinitions:
+        - Name: !Ref ServiceName
+          Image: !Ref nudgeImage
+          Cpu: !Ref ContainerCpu
+          Memory: !Ref ContainerMemory
+          Essential: 'true'
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              HostPort: !Ref ContainerPort
+              Protocol: tcp
+          Environment:
+            - Name: APP_CONFIG
+              Value: !Ref envAppConfig
+            - Name: MIGRATE_CONFIG
+              Value: !Ref envMigrateConfig
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 46047d38-6707-428c-880f-83b9b66e7fb5
+  nudgeService:
+    Type: 'AWS::ECS::Service'
+    Properties:
+      Cluster: !Ref nudgeCluster
+      DesiredCount: '1'
+      TaskDefinition: !Ref nudgeTask
+      LoadBalancers:
+        - ContainerPort: !Ref ContainerPort
+          ContainerName: !Ref ServiceName
+        - TargetGroupArn: !Ref nudgeTargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref WebSecurityGroupProd
+          Subnets:
+            - !Ref PublicSubnetOne
+            - !Ref PublicSubnetTwo
+            - !Ref PublicSubnetThree
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: a0b0a379-c8c5-4e34-93e6-d71edd29a886
+  nudgeAutoScalingRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - application-autoscaling.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: service-autoscaling
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'application-autoscaling:*'
+                  - 'cloudwatch:DescribeAlarms'
+                  - 'cloudwatch:PutMetricAlarm'
+                  - 'ecs:DescribeServices'
+                  - 'ecs:UpdateService'
+                Resource: '*'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: c1c33860-8eba-424d-8e01-0ee5377bfdea
+  nudgeTarget:
+    Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
+    Properties:
+      MaxCapacity: 10
+      MinCapacity: 1
+      ResourceId: !Join 
+        - /
+        - - service
+          - !Ref nudgeCluster
+          - !GetAtt 
+            - nudgeService
+            - Name
+      RoleARN: !GetAtt 
+        - nudgeAutoScalingRole
+        - Arn
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ServiceNamespace: ecs
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 14b1abe4-5318-436e-98ac-ca42d07bfe5f
+  scaleUp:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: nudgePolicyDown
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref nudgeTarget
+      StepScalingPolicyConfiguration:
+        Cooldown: 60
+        MetricAggregationType: Average
+        AdjustmentType: ChangeInCapacity
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            MetricIntervalUpperBound: 100
+            ScalingAdjustment: 2
+          - MetricIntervalLowerBound: 100
+            ScalingAdjustment: 4
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: df5b0b35-0abe-45b4-bb7f-45b36e96e161
+  scaleDown:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: nudgePolicyUp
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref nudgeTarget
+      StepScalingPolicyConfiguration:
+        Cooldown: 60
+        MetricAggregationType: Average
+        AdjustmentType: ChangeInCapacity
+        StepAdjustments:
+          - MetricIntervalUpperBound: -1
+            MetricIntervalLowerBound: -100
+            ScalingAdjustment: -1
+          - MetricIntervalUpperBound: -100
+            ScalingAdjustment: -2
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 7c538433-453d-4c7c-b05b-6455e8f3e165
+  rdsDbSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      SubnetIds:
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+        - !Ref PublicSubnetThree
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 5f5bd96b-955c-403a-a2fe-e44023ad7e3f
+Metadata:
+  'AWS::CloudFormation::Designer':
+    c1c33860-8eba-424d-8e01-0ee5377bfdea:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 540
+        'y': 240
+      z: 1
+      embeds: []
+    46047d38-6707-428c-880f-83b9b66e7fb5:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 990
+        'y': 540
+      z: 2
+      parent: c239754f-a13f-4391-a6f6-cf7f68cc87b5
+      embeds: []
+    a0b0a379-c8c5-4e34-93e6-d71edd29a886:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 900
+        'y': 570
+      z: 2
+      parent: c239754f-a13f-4391-a6f6-cf7f68cc87b5
+      embeds: []
+      isassociatedwith:
+        - 46047d38-6707-428c-880f-83b9b66e7fb5
+        - 1e1965f8-93d9-4368-886e-8beccb41e72a
+        - 59f92925-e545-4700-b711-4e0b07de41f9
+    14b1abe4-5318-436e-98ac-ca42d07bfe5f:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 690
+        'y': 360
+      z: 1
+      embeds: []
+    7c538433-453d-4c7c-b05b-6455e8f3e165:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 690
+        'y': 240
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 14b1abe4-5318-436e-98ac-ca42d07bfe5f
+    df5b0b35-0abe-45b4-bb7f-45b36e96e161:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 600
+        'y': 240
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 14b1abe4-5318-436e-98ac-ca42d07bfe5f
+    86d00b62-fcb4-4e3f-b9e5-1a192a3ef91b:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 990
+        'y': 750
+      z: 2
+      parent: c239754f-a13f-4391-a6f6-cf7f68cc87b5
+      embeds: []
+      isassociatedwith:
+        - 0163c7ea-2703-4a59-8627-40ff10894391
+    0163c7ea-2703-4a59-8627-40ff10894391:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 900
+        'y': 750
+      z: 2
+      parent: c239754f-a13f-4391-a6f6-cf7f68cc87b5
+      embeds: []
+      isassociatedwith:
+        - 13546089-a73d-4ea9-8e96-059109fad9d8
+      iscontainedinside:
+        - 1ef8cc2f-29c8-4bdc-a4f5-e191681eec91
+        - 71e65129-8c4d-44ae-a537-e8f580e03e15
+        - ef3228c7-513a-480a-8990-d9e50901c34e
+    1e1965f8-93d9-4368-886e-8beccb41e72a:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 990
+        'y': 630
+      z: 2
+      parent: c239754f-a13f-4391-a6f6-cf7f68cc87b5
+      embeds: []
+      iscontainedinside:
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+    59f92925-e545-4700-b711-4e0b07de41f9:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 810
+        'y': 360
+      z: 1
+      embeds: []
+    13546089-a73d-4ea9-8e96-059109fad9d8:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 1020
+        'y': 300
+      z: 1
+      embeds: []
+    7784d14f-6e4e-4a07-8200-474bb161b8e2:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 900
+        'y': 240
+      z: 1
+      embeds: []
+    babe6199-badf-4526-a7b5-ec156157906a:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 800
+        'y': 240
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 7784d14f-6e4e-4a07-8200-474bb161b8e2
+    c239754f-a13f-4391-a6f6-cf7f68cc87b5:
+      size:
+        width: 600
+        height: 630
+      position:
+        x: 540
+        'y': 450
+      z: 1
+      embeds:
+        - 46047d38-6707-428c-880f-83b9b66e7fb5
+        - 1e1965f8-93d9-4368-886e-8beccb41e72a
+        - ef3228c7-513a-480a-8990-d9e50901c34e
+        - 71e65129-8c4d-44ae-a537-e8f580e03e15
+        - 1ef8cc2f-29c8-4bdc-a4f5-e191681eec91
+        - a0b0a379-c8c5-4e34-93e6-d71edd29a886
+        - 0163c7ea-2703-4a59-8627-40ff10894391
+        - 86d00b62-fcb4-4e3f-b9e5-1a192a3ef91b
+    ef3228c7-513a-480a-8990-d9e50901c34e:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 570
+        'y': 870
+      z: 2
+      parent: c239754f-a13f-4391-a6f6-cf7f68cc87b5
+      embeds: []
+      iscontainedinside:
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+    71e65129-8c4d-44ae-a537-e8f580e03e15:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 570
+        'y': 720
+      z: 2
+      parent: c239754f-a13f-4391-a6f6-cf7f68cc87b5
+      embeds: []
+      iscontainedinside:
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+    1ef8cc2f-29c8-4bdc-a4f5-e191681eec91:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 570
+        'y': 540
+      z: 2
+      parent: c239754f-a13f-4391-a6f6-cf7f68cc87b5
+      embeds: []
+      iscontainedinside:
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+        - c239754f-a13f-4391-a6f6-cf7f68cc87b5
+    5f5bd96b-955c-403a-a2fe-e44023ad7e3f:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 360
+        'y': 570
+      z: 1
+      embeds: []
+      iscontainedinside:
+        - 1ef8cc2f-29c8-4bdc-a4f5-e191681eec91
+        - 71e65129-8c4d-44ae-a537-e8f580e03e15
+        - ef3228c7-513a-480a-8990-d9e50901c34e
