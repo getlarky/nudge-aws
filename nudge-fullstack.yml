@@ -132,6 +132,7 @@ Resources:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: 'Allow inbound MySQL access from web instances, home and office'
+      VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: '3306'
@@ -168,6 +169,7 @@ Resources:
         - - "WebSG"
           - !Ref ServiceName
       GroupDescription: 'Allow HTTP from anywhere, restrict SSH to home and office'
+      VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: '22'
@@ -223,7 +225,7 @@ Resources:
   nudgeTargetGroup:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
     Properties:
-      TargetType: IP
+      TargetType: ip
       HealthCheckIntervalSeconds: 10
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
