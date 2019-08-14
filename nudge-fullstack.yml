@@ -172,7 +172,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: '3306'
           ToPort: '3306'
-          SourceSecurityGroupName: !Ref WebSecurityGroupProd
+          SourceSecurityGroupId: !Ref WebSecurityGroupProd
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 7784d14f-6e4e-4a07-8200-474bb161b8e2
